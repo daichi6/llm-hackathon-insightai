@@ -1,6 +1,6 @@
 #final_amazon.py
 
-import fitz  # PyMuPDF
+import pymupdf as fitz
 import json
 import os
 import boto3

@@ -1,7 +1,7 @@
 #extractor_images.py
 
 import boto3
-import fitz  # PyMuPDF
+import pymupdf as fitz
 
 s3 = boto3.client('s3')
 bucket_name = 'hackathon-jr'

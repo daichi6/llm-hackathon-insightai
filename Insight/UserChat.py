@@ -12,7 +12,7 @@ from langchain_community.llms.huggingface_pipeline import HuggingFacePipeline
 import faiss
 import os
 import pickle
-import fitz
+import pymupdf as fitz
 import json
 import pandas as pd
 from groq import Groq
