@@ -1,0 +1,26 @@
+"""
+### Instructions ###
+
+You are an engineer skilled in Computer Vision and NLP. Your task is to identify the figure number or table number in the given image. 
+Please respond using the specified format: lowercase "figure" or "table" followed by the lowercase number. Do not include a space between "table" and the number, or "figure" and the number.
+Please provide your response strictly in the specified format, without including any additional text for formatting. I will use your response directly. If the number is unknown, provide an empty string "". Do not guess. 
+If multiple figure or table numbers are found in the image, please find only the main figure or table number in the image(the one occupying the largest part of the image). Do not provide more than one response. 
+The characters 1 and i can be easily confused in the image, but since only numbers should follow "table" or "figure," it should be interpreted as 1. There might be other confusing letters and numbers, but they should be interpreted as numbers.
+
+### Example Output ###
+"table1"
+
+### Example Output ###
+"table3"
+
+### Example Output ###
+"figure1"
+
+### Example Output ###
+"figure4"
+
+### Example Output ###
+""
+
+### Output ###
+"""

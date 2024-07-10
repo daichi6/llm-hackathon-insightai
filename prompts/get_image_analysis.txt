@@ -1,0 +1,36 @@
+"""
+Analyze the image titled '{image_name}' from a scientific paper. The image dimensions are {width}x{height} with {channels} channels.
+Provide a comprehensive analysis structured as follows:
+1. Image Type and Overview:
+   - Identify the type of scientific figure (e.g., graph, diagram, microscopy image, flow chart).
+   - Describe the general layout and main components of the image.
+2. Key Scientific Concepts:
+   - Identify and explain the main scientific concepts or principles illustrated in the image.
+   - Discuss how these concepts relate to the likely field of study.
+3. Data Representation:
+   - If applicable, describe how data is represented (e.g., axes, scales, color coding).
+   - Analyze any trends, patterns, or significant data points shown.
+4. Methodology Illustration:
+   - Identify any experimental setups, procedures, or methodologies depicted.
+   - Explain how the image contributes to understanding the research methods used.
+5. Results and Findings:
+   - Interpret any results or findings presented in the image.
+   - Discuss the potential implications of these results in the context of the research.
+6. Technical Details:
+   - Analyze any technical elements, such as equations, molecular structures, or specialized notations.
+   - Explain their significance in the context of the research.
+7. Visual Aids and Annotations:
+   - Describe any labels, legends, or other annotations present in the image.
+   - Explain how these elements enhance the understanding of the scientific content.
+8. Interdisciplinary Connections:
+   - Suggest potential connections to other scientific fields or disciplines.
+   - Discuss how this research might impact or relate to broader scientific understanding.
+9. Limitations and Considerations:
+   - Identify any potential limitations or considerations in the data or methodology presented.
+   - Suggest possible areas for further research or investigation based on the image.
+10. Summary of Scientific Significance:
+    - Provide a concise summary of the key scientific insights and importance of this image in research.
+11. Summary:
+    - Give a basic Summary of the Image
+Please provide a detailed analysis for each section, ensuring a comprehensive understanding of the scientific content and significance of the image.
+"""

@@ -1,0 +1,125 @@
+"""
+### Instructions ###
+You are an NLP engineer. Your task is to extract the "numbers" from the user's query below.
+The "numbers" mean which academic paper the user is referring to, 2) which figure the user is referring to, and 3) which table the user is referring to.
+There may be cases where all, some, or none of these are specified. Enter the number only for the specified fields, and return an empty string "" for fields that are not specified.
+Interpret "figure" for terms such as "Chart," "Diagram," or "Image." Interpret "thesis" for terms such as "Academic Paper," "Paper," or "Document."
+Please provide your response as a list of objects, each containing thesis, figure, and table.　Please provide your response strictly in the specified format, without including any additional text for formatting. I will use your response directly.
+If it is unclear which thesis, figure, or table is being referred to, it is okay to return an empty string. Please do not make any assumptions.
+
+### Output Format ###
+Format: a list of objects
+
+### Example user's query1 ###
+What is the main hypothesis or research question addressed in the first academic article?
+
+### Example Output1 ###
+[
+  {
+  "thesis": "1",
+  "figure": "",
+  "table": ""
+  }
+]
+
+### Example user's query2 ###
+Summarize the methodology used in the third academic article. Highlight any unique approaches or techniques employed.
+
+### Example Output2 ###
+[
+  {
+  "thesis": "3",
+  "figure": "",
+  "table": ""
+  }
+]
+
+
+### Example user's query3 ###
+Q. From the images and figures in the second article, describe the trend shown in Figure 2. What does it indicate about the research findings?
+
+### Example Output3 ###
+[
+  {
+  "thesis": "2",
+  "figure": "2",
+  "table": ""
+  }
+]
+
+### Example user's query4 ###
+Q. What can be understood from Image 3 in the third paper?
+
+### Example Output4 ###
+[
+  {
+  "thesis": "3",
+  "figure": "3",
+  "table": ""
+  }
+]
+
+### Example user's query4 ###
+Q. Please explain Figure 3 and Table 2 of the second academic paper. What do these indicate about the research findings?
+
+### Example Output4 ###
+[
+  {
+  "thesis": "2",
+  "figure": "3",
+  "table": ""
+  },
+  {
+  "thesis": "2",
+  "figure": "",
+  "table": "2"
+  }
+]
+
+### Example user's query5 ###
+Q. Please compare table 3 and chart 4 from the second and third theses, respectively.
+
+### Example Output5 ###
+[
+  {
+  "thesis": "2",
+  "figure": "",
+  "table": "3"
+  },
+  {
+  "thesis": "3",
+  "figure": "4",
+  "table": ""
+  }
+]
+
+### Example user's query6 ###
+Do you like an apple?
+
+### Example Output6 ###
+[
+  {
+  "thesis": "",
+  "figure": "",
+  "table": ""
+  }
+]
+
+### Example user's query7 ###
+Considering the previous conversations, please propose a new research direction or hypothesis.
+
+### Example Output7 ###
+[
+  {
+  "thesis": "",
+  "figure": "",
+  "table": ""
+  }
+]
+
+
+### User’s query ###
+{USER_QUERY}
+
+### Output ###
+"""
