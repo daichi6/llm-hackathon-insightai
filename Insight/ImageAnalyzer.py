@@ -75,8 +75,8 @@ Please provide a detailed analysis for each section, ensuring a comprehensive un
     print(f"Sending image to Claude API for comprehensive analysis of {image_path}")
     try:
         response = client.messages.create(
-            model="claude-3-haiku-20240307",
-            #model="claude-3-5-sonnet-20240620",
+            #model="claude-3-haiku-20240307",
+            model="claude-3-5-sonnet-20240620",
             max_tokens=2000,
             messages=[
                 {
@@ -138,8 +138,8 @@ The characters 1 and i can be easily confused in the image, but since only numbe
         
         print(f"Sending image to Claude API for figure/table number of {image_path}")
         response = client.messages.create(
-            #model="claude-3-5-sonnet-20240620",
-            model="claude-3-haiku-20240307",
+            model="claude-3-5-sonnet-20240620",
+            #model="claude-3-haiku-20240307",
             max_tokens=10,
             messages=[
                 {
