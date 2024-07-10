@@ -26,8 +26,8 @@ def summarize_text(text):
         }
         
         data = {
-            #"model": "claude-3-5-sonnet-20240620",
-            "model": "claude-3-haiku-20240307",
+            "model": "claude-3-5-sonnet-20240620",
+            #"model": "claude-3-haiku-20240307",
             "max_tokens": 1000,
             "system": "You are a helpful assistant that is specialized in reading and analyzing research papers.",
             "messages": [
