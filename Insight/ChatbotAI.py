@@ -19,6 +19,7 @@ from UserChat import chat_main, update_vector_store
 from generate_tables import generate_table_summaries
 import time
 import groq
+from dotenv import load_dotenv
 
 load_dotenv()
 
@@ -179,7 +180,8 @@ import re
 
 def map_paper_reference(user_input, insights_df):
     # Initialize Groq client with hard-coded API key
-    client = groq.Groq(api_key="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")
+    
+    client = groq.Groq(api_key=os.getenv('CLIENT_MAP_KEY'))
     
     # Prompt for the LLaMa model
     prompt = f"""
