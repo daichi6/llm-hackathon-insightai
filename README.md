@@ -1,3 +1,19 @@
+# For Evaluators 
+
+Please follow the steps below to conduct the test from the [UI link](http://209.97.145.117:8501):
+
+1. Enter a username and click "Sign Up." For subsequent visits, use the same username to log in. 
+2. Upload a PDF using the "Browse files" button. Note that you can upload PDFs other than the 8 provided for evaluation. 
+3. Click "Submit." 
+4. From "Select PDFs," choose the PDF you want to ask questions about. 
+5. Click "Analyze Selected PDFs." Upon completion, summaries and other details of each academic paper will be displayed.
+6. Ask your questions in the "Chat" section. 
+
+**Note 1:** Please be aware that process 5 takes approximately 3-5 minutes per PDF. 
+**Note 2:** To improve the accuracy of responses, please specify which academic paper you refer to in your query each time you ask a question (even if you have only selected one PDF). For example: "What is the encoder and decoder explained in the first academic paper?" 
+**Note 3:** Conversation history is not implemented in the production environment due to token limits and processing speed (we use Llama3-70B). Therefore, the LLM may not be able to answer questions that require conversation history, such as "Summarize your response." If you are interested in using conversation history, please contact a team member as this would require a model upgrade.
+
+
 # Introduction
 
 **insightai** is a project developed for the Gen AI Fusion Hackathon Summer 2024(June 27 - July 2, 2024), sponsored by the MS in Applied Data Science program and The University of Chicago Data Science Institute. It was developed by a team of University of Chicago Applied Data Science Master’s students: Daichi Ishikawa, Josh Rauvola, and Sivaram Mandava. This project aims to create an LLM that can answer questions regarding academic paper PDFs uploaded by users, including questions about specific figures and tables.
