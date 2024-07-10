@@ -1,6 +1,6 @@
 # Introduction
 
-**insightai** is a project developed for the Gen AI Fusion Hackathon Summer 2024(June 27 - July 2, 2024), sponsored by the MS in Applied Data Science program and The University of Chicago Data Science Institute. It was developed by a team of University of Chicago Applied Data Science Master’s students: Daichi Ishikawa, Josh Rayvika, and Sivaram Mandava. This project aims to create an LLM that can answer questions regarding academic paper PDFs uploaded by users, including questions about specific figures and tables.
+**insightai** is a project developed for the Gen AI Fusion Hackathon Summer 2024(June 27 - July 2, 2024), sponsored by the MS in Applied Data Science program and The University of Chicago Data Science Institute. It was developed by a team of University of Chicago Applied Data Science Master’s students: Daichi Ishikawa, Josh Rauvola, and Sivaram Mandava. This project aims to create an LLM that can answer questions regarding academic paper PDFs uploaded by users, including questions about specific figures and tables.
 
 
 - **Presentation Slides:** [presentation](slides/presentation.pdf)
