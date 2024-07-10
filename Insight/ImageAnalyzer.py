@@ -9,12 +9,17 @@ from anthropic import Anthropic
 import imghdr
 import boto3
 import io
+from dotenv import load_dotenv
+
+load_dotenv()
+
+api_key = os.getenv('API_KEY')
 
 # Set up S3 client
 s3 = boto3.client('s3')
 
 # Set your Anthropic API key
-client = Anthropic(api_key="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")
+client = Anthropic(api_key=api_key)
 
 def encode_image(image_path):
     with open(image_path, "rb") as image_file:
@@ -70,7 +75,8 @@ Please provide a detailed analysis for each section, ensuring a comprehensive un
     print(f"Sending image to Claude API for comprehensive analysis of {image_path}")
     try:
         response = client.messages.create(
-            model="claude-3-5-sonnet-20240620",
+            model="claude-3-haiku-20240307",
+            #model="claude-3-5-sonnet-20240620",
             max_tokens=2000,
             messages=[
                 {
@@ -132,7 +138,8 @@ The characters 1 and i can be easily confused in the image, but since only numbe
         
         print(f"Sending image to Claude API for figure/table number of {image_path}")
         response = client.messages.create(
-            model="claude-3-5-sonnet-20240620",
+            #model="claude-3-5-sonnet-20240620",
+            model="claude-3-haiku-20240307",
             max_tokens=10,
             messages=[
                 {
@@ -219,19 +226,20 @@ def process_s3_bucket(bucket_name, prefix=''):
     
     return pd.DataFrame(results)
 
-def save_df_to_s3(df, bucket_name, file_key):
+def save_df_to_s3(df, bucket_name, file_key, input_prefix):
     csv_buffer = io.StringIO()
     df.to_csv(csv_buffer, index=False)
+    file_key = f"{input_prefix}/{file_key}"  # Add input_prefix to file_key
     s3.put_object(Bucket=bucket_name, Key=file_key, Body=csv_buffer.getvalue())
     print(f"Results saved to S3: s3://{bucket_name}/{file_key}")
 
 # Usage example
-def get_context():
+def get_context(username):
+    bucket_name = "hackathon-jr"
+    input_prefix = username  # Folder containing input PNG files
+    output_key = "image_analysis_results.csv"  # Output CSV file path in S3
+    
     try:
-        bucket_name = "hackathon-jr"
-        input_prefix = ""  # Folder containing input PNG files
-        output_key = "image_analysis_results.csv"  # Output CSV file path in S3
-        
         print(f"Starting processing of S3 bucket: {bucket_name}")
         df_results = process_s3_bucket(bucket_name, input_prefix)
         
@@ -239,7 +247,7 @@ def get_context():
             print("Results DataFrame:")
             print(df_results)
             # Save results to S3
-            save_df_to_s3(df_results, bucket_name, output_key)
+            save_df_to_s3(df_results, bucket_name, output_key, input_prefix)
         else:
             print("No results were returned.")
     except Exception as e:

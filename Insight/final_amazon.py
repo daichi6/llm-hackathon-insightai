@@ -5,12 +5,11 @@ import json
 import os
 import boto3
 from botocore.exceptions import ClientError
-from pdf2image import convert_from_bytes
-from io import BytesIO
 import random
 import time
-import pandas as pd 
-
+import pandas as pd
+import tempfile
+from botocore.exceptions import ClientError
 
 # Initialize Boto3 clients with the correct region
 s3_client = boto3.client('s3', region_name='us-east-2')
@@ -35,7 +34,6 @@ def extract_tf_blocks(data):
 
 def extract_snippet(pdf_path, bounding_box, page_number, snippet_name):
     """Extracts a snippet from a PDF file given its bounding box."""
-
     doc = fitz.open(pdf_path)
     page = doc[page_number - 1]
 
@@ -66,22 +64,12 @@ def extract_snippet(pdf_path, bounding_box, page_number, snippet_name):
     pix = page.get_pixmap(matrix=fitz.Matrix(2, 2), clip=rect)
     return pix, doc
 
-
 def upload_to_s3(file_path, bucket_name, object_name):
     """Uploads a file to an S3 bucket."""
     try:
-        # Check if file already exists in bucket
-        try:
-            s3_client.head_object(Bucket=bucket_name, Key=object_name)
-            print(f"File {object_name} already exists in bucket {bucket_name}. Skipping upload.")
-        except ClientError as e:
-            if e.response['Error']['Code'] == '404':
-                # File does not exist, upload it
-                s3_client.upload_file(file_path, bucket_name, object_name)
-                print(f"Uploaded file {object_name} to bucket {bucket_name}.")
-            else:
-                print(f"Error checking if file exists in S3: {e}")
-                raise
+        # File does not exist, upload it
+        s3_client.upload_file(file_path, bucket_name, object_name)
+        print(f"Uploaded file {object_name} to bucket {bucket_name}.")
     except ClientError as e:
         print(f"Error uploading file to S3: {e}")
         raise
@@ -98,25 +86,49 @@ def start_document_analysis(bucket_name, document_name):
                 }
             },
             FeatureTypes=['TABLES', 'FORMS'],
-            # Ensure this token is unique per request
             ClientRequestToken=str(random.randint(100000, 999999))
         )
         job_id = response['JobId']
         print(f"Document analysis started. Job ID: {job_id}")
         return job_id
     except ClientError as e:
-        print(f"Error starting document analysis for {document_name} from bucket {bucket_name}: {e}")
+        print(f"Error starting document analysis: {e}")
         raise
+
+def check_job_status(job_id):
+    """Checks the status of the Textract job until it completes."""
+    print(f"Checking job status for Job ID: {job_id}...")
+    while True:
+        response = textract_client.get_document_analysis(JobId=job_id)
+        status = response['JobStatus']
+        print(f"Current job status: {status}")
+        if status in ['SUCCEEDED', 'FAILED']:
+            return status
+        time.sleep(5)
 
 def get_document_analysis(job_id):
     """Retrieves the results of a document analysis operation using the job ID."""
-    print(f"Retrieving results for job ID: {job_id}...")
-    try:
-        response = textract_client.get_document_analysis(JobId=job_id)
-        return response
-    except ClientError as e:
-        print(f"Error retrieving results for job ID {job_id}: {e}")
-        raise
+    print(f"Retrieving results for Job ID: {job_id}...")
+    pages = []
+    next_token = None
+    while True:
+        if next_token:
+            response = textract_client.get_document_analysis(JobId=job_id, NextToken=next_token)
+            print("Fetching next set of results with NextToken...")
+        else:
+            response = textract_client.get_document_analysis(JobId=job_id)
+            print("Fetching initial set of results...")
+        
+        pages.append(response)
+        print(f"Received {len(response['Blocks'])} blocks in current response.")
+
+        next_token = response.get('NextToken', None)
+        if not next_token:
+            print("No more pages to fetch.")
+            break
+        else:
+            print("NextToken found, continuing to fetch more pages.")
+    return pages
 
 def read_from_s3(bucket_name, object_name):
     """Reads an object from S3 to test if permissions are correctly set."""
@@ -128,63 +140,147 @@ def read_from_s3(bucket_name, object_name):
         print(f"Error reading object {object_name} from bucket {bucket_name}: {e}")
         raise
 
-def get_tables(file_count, object_name):
-    bucket_name = 'hackathon-jr'
+# def get_tables(file_count, object_name, username):
+#     bucket_name = 'hackathon-jr'
+
+#     object_name = object_name.split('/')[-1]
     
-    # Download PDF from S3
-    pdf_path = f"{object_name}"
-    try:
-        s3_client.download_file(bucket_name, object_name, pdf_path)
-        print(f"Downloaded {object_name} from S3.")
-    except ClientError as e:
-        print(f"Failed to download {object_name} from S3: {e}")
+#     # Download PDF from S3
+#     pdf_path = f"{username}/{object_name}"
+#     try:
+#         s3_client.download_file(bucket_name, pdf_path, pdf_path)
+#         print(f"Downloaded {object_name} from S3.")
+#     except ClientError as e:
+#         print(f"Failed to download {object_name} from S3: {e}")
 
-    # Test reading from S3
-    read_from_s3(bucket_name, object_name)
-    print(f"Successfully read {object_name} from S3.")
+#     # Test reading from S3
+#     read_from_s3(bucket_name, object_name)
+#     print(f"Successfully read {object_name} from S3.")
 
-    # Start document analysis using Textract
-    try:
-        job_id = start_document_analysis(bucket_name, object_name)
+#     # Start document analysis using Textract
+#     try:
+#         job_id = start_document_analysis(bucket_name, object_name)
         
-        # Wait for the job to complete - simple polling mechanism will need to be improved
-        while True:
-            response = get_document_analysis(job_id)
-            print(response['JobStatus'])
-            if response['JobStatus'] == 'SUCCEEDED':
-                break
-            elif response['JobStatus'] == 'FAILED':
-                print(f"Document analysis failed for job ID: {job_id}")
-                return
-            time.sleep(10)  # Wait before polling again
+#         # Wait for the job to complete
+#         job_status = check_job_status(job_id)
+#         if job_status == 'SUCCEEDED':
+#             print(f"Job ID: {job_id} succeeded. Retrieving full results...")
+#             result_pages = get_document_analysis(job_id)
+            
+#             # Combine all pages into one data structure
+#             all_data = []
+#             for page in result_pages:
+#                 all_data.extend(page['Blocks'])
+            
+#             data = {'Blocks': all_data}
 
-        data = response
+#             # Extract table and figure data
+#             box_data = extract_tf_blocks(data)
+#             print(box_data)
 
-        #get the name of the file but remove the .pdf extension
-        file_name = object_name.split('.')[0]
-        #save te json data to s3 bucket 
-        with open(file_name + ".json", 'w') as f:
-            json.dump(data, f)
+#             figure_count = 1
+#             for i, figure_data in box_data.items():
+#                 print("WE MADE IT BABY")
+#                 pix, doc = extract_snippet(pdf_path, figure_data["BBox"], figure_data["Page"], f"table_{i}")
+                
+#                 # Save pixmap to temporary local file
+#                 temp_image_path = f"/tmp/{username}_temp_image.png"
+#                 pix.save(temp_image_path)
 
-        # Extract table and figure data
-        box_data = extract_tf_blocks(data)
+#                 # Upload snippet image to S3
+#                 snippet_name = f"{file_count:03d}_{figure_count:03d}_000.png"
+#                 s3_object_name = f"{username}/{snippet_name}"
+#                 try:
+#                     upload_to_s3(temp_image_path, bucket_name, s3_object_name)
+#                 except ClientError as e:
+#                     print(f"Failed to upload {snippet_name} to S3: {e}")
+#                     continue
+#                 else:
+#                     print(f"Uploaded {snippet_name} to S3 bucket {bucket_name} under {s3_object_name}")
+                
+#                 # Remove temporary local file
+#                 os.remove(temp_image_path)
+                
+#                 figure_count += 1
+#         else:
+#             print(f"Document analysis failed for job ID: {job_id}")
 
-        print(box_data)
+#     except ClientError as e:
+#         print(f"Failed to analyze {object_name} with Textract: {e}")
 
-        figure_count = 1
-        for i, figure_data in box_data.items():
-            print("WE MADE IT BABY")
-            pix, doc = extract_snippet(pdf_path, figure_data["BBox"], figure_data["Page"], f"table_{i}")
-            # Upload snippet image to S3
-            snippet_name = f"{file_count:03d}_{figure_count:03d}_000.png"
-            snippet_path = f"{snippet_name}"
-            pix.save(snippet_path)
-            upload_to_s3(snippet_path, bucket_name, snippet_name)
-            figure_count += 1
+#     return figure_count, doc
 
-    except ClientError as e:
-        print(f"Failed to analyze {object_name} with Textract: {e}")
-
-    return figure_count, doc
-
+ 
+def get_tables(file_count, object_name, username):
+    bucket_name = 'hackathon-jr'
+    object_name = object_name.split('/')[-1]
+    s3_pdf_path = f"{username}/{object_name}"
     
+    # Create a temporary directory for this process
+    with tempfile.TemporaryDirectory() as temp_dir:
+        local_pdf_path = os.path.join(temp_dir, object_name)
+        
+        # Download PDF from S3
+        try:
+            s3_client.download_file(bucket_name, s3_pdf_path, local_pdf_path)
+            print(f"Downloaded {object_name} from S3.")
+        except ClientError as e:
+            print(f"Failed to download {object_name} from S3: {e}")
+            return 0, None  # Return early if download fails
+
+        # Test reading from S3
+        if not read_from_s3(bucket_name, s3_pdf_path):
+            print(f"Failed to read {object_name} from S3.")
+            return 0, None
+
+        # Start document analysis using Textract
+        try:
+            job_id = start_document_analysis(bucket_name, s3_pdf_path)
+            
+            # Wait for the job to complete
+            job_status = check_job_status(job_id)
+            if job_status != 'SUCCEEDED':
+                print(f"Document analysis failed for job ID: {job_id}")
+                return 0, None
+
+            print(f"Job ID: {job_id} succeeded. Retrieving full results...")
+            result_pages = get_document_analysis(job_id)
+            
+            # Combine all pages into one data structure
+            all_data = []
+            for page in result_pages:
+                all_data.extend(page['Blocks'])
+            
+            data = {'Blocks': all_data}
+
+            # Extract table and figure data
+            box_data = extract_tf_blocks(data)
+            print(box_data)
+
+            figure_count = 1
+            for i, figure_data in box_data.items():
+                print("Processing figure/table")
+                pix, doc = extract_snippet(local_pdf_path, figure_data["BBox"], figure_data["Page"], f"table_{i}")
+                
+                # Save pixmap to temporary file
+                temp_image_path = os.path.join(temp_dir, f"temp_image_{i}.png")
+                pix.save(temp_image_path)
+
+                # Upload snippet image to S3
+                snippet_name = f"{file_count:03d}_{figure_count:03d}_000.png"
+                s3_object_name = f"{username}/{snippet_name}"
+                try:
+                    upload_to_s3(temp_image_path, bucket_name, s3_object_name)
+                    print(f"Uploaded {snippet_name} to S3 bucket {bucket_name} under {s3_object_name}")
+                except ClientError as e:
+                    print(f"Failed to upload {snippet_name} to S3: {e}")
+                
+                figure_count += 1
+                if figure_count >= 49:
+                    time.sleep(65)  # Sleep for 65 seconds to avoid rate limiting
+
+        except ClientError as e:
+            print(f"Failed to analyze {object_name} with Textract: {e}")
+            return 0, None
+
+    return figure_count, doc  # 

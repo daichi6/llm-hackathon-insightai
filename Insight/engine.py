@@ -1,98 +1,113 @@
-#engine.py
-
 import os
 import boto3
 import pandas as pd
 from UserChat import extract_text
 from final_amazon import get_tables
 from extractor_images import extract_images
+import io
+import tempfile
+import time
 
+# Initialize S3 and Textract clients
 s3_client = boto3.client('s3')
 textract_client = boto3.client('textract', region_name='us-east-2')
 
-def start_engine(file):
+def start_engine(file, username, df):
+    print("IN ENGINE")
     bucket_name = 'hackathon-jr'
-    local_file_path = file
 
     print(f"Starting to process file: {file}")
 
-    # Download file from S3
+    # Download file from S3 into memory
     try:
-        s3_client.download_file(bucket_name, file, local_file_path)
+        s3_object = s3_client.get_object(Bucket=bucket_name, Key=file)
+        file_content = s3_object['Body'].read()
         print(f"Successfully downloaded {file} from S3")
     except Exception as e:
         print(f"Error downloading file from S3: {e}")
         return 1
-    
-    print(f"Size of downloaded file: {os.path.getsize(local_file_path)} bytes")
 
-    # Check if file exists and is not empty
-    if not os.path.exists(local_file_path):
-        print(f"File {local_file_path} does not exist.")
-        return 1
-    
-    if os.path.getsize(local_file_path) == 0:
-        print(f"File {local_file_path} is empty.")
-        return 1
+    print(f"Size of downloaded file: {len(file_content)} bytes")
+
+    # Create a temporary file to handle the PDF content
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as temp_pdf:
+        temp_pdf.write(file_content)
+        temp_pdf_path = temp_pdf.name
 
     print(f"Processing {file}...")
     print(f"Extracting text from {file}...")
 
     # Extract text from the PDF file
     try:
-        text = extract_text(local_file_path)
+        text = extract_text(temp_pdf_path)
         print(f"Successfully extracted text from {file}")
     except Exception as e:
         print(f"Error extracting text from PDF: {e}")
         return 1
+    finally:
+        os.remove(temp_pdf_path)  # Clean up the temporary fil
     
-
-    # Delete existing paper_num.csv if it exists
+   # Read in the csv file called paper_num.csv from S3 bucket
     try:
-        s3_client.delete_object(Bucket=bucket_name, Key='paper_num.csv')
-        print("Deleted existing paper_num.csv")
+        csv_object = s3_client.get_object(Bucket=bucket_name, Key='paper_num.csv')
+        csv_content = csv_object['Body'].read()
+        df = pd.read_csv(io.BytesIO(csv_content))
+        print("Successfully read paper_num.csv from S3")
     except Exception as e:
-        print(f"Error deleting paper_num.csv (This might be normal if it didn't exist): {e}")
-
-    # Create new paper_num.csv
-    df = pd.DataFrame({"Paper_Num": [0]})
-    file_count = df['Paper_Num'].iloc[-1] + 1
-
-    # Save to S3
-    try:
-        df.to_csv('paper_num.csv', index=False)
-        s3_client.upload_file('paper_num.csv', bucket_name, 'paper_num.csv')
-        print("Uploaded new paper_num.csv to S3")
-    except Exception as e:
-        print(f"Error creating or uploading paper_num.csv: {e}")
+        print(f"Error reading paper_num.csv from S3: {e}")
         return 1
 
-    # Write the extracted text to a text file
-    txt_file_name = f"{file_count}_000.txt"
-    text_file_path = txt_file_name
+    # Grab the file_count from the Paper_Num column
+    file_count = df['Paper_Num'].iloc[-1] + 1
+
+    print("File Count: ", file_count)
+
+    # Save to S3 
+    # try:
+    #     csv_buffer = io.StringIO()
+    #     df.to_csv(csv_buffer, index=False)
+    #     s3_client.put_object(Bucket=bucket_name, Key=f'{username}/paper_num.csv', Body=csv_buffer.getvalue())
+        
+    #     print("Uploaded new paper_num.csv to S3")
+    # except Exception as e:
+    #     print(f"Error creating or uploading paper_num.csv: {e}")
+    #     return 1
+
+    # Write the extracted text to a text file in-memory
+    txt_file_name = f"{username}/{file_count}_000.txt"
+    text_buffer = io.StringIO()
     try:
-        with open(text_file_path, 'w') as f:
-            f.write(text)
+        text_buffer.write(text)
+        text_buffer.seek(0)  # Move the cursor to the beginning of the buffer
         print(f"Successfully wrote extracted text to {txt_file_name}")
     except Exception as e:
-        print(f"Error writing text to file: {e}")
+        print(f"Error writing text to buffer: {e}")
         return 1
 
     # Upload the PDF and text files to the S3 bucket
     try:
-        s3_client.upload_file(local_file_path, bucket_name, file)
-        s3_client.upload_file(text_file_path, bucket_name, txt_file_name)
+        s3_client.put_object(Bucket=bucket_name, Key=f'{username}/{os.path.basename(file)}', Body=file_content)
+        s3_client.put_object(Bucket=bucket_name, Key=txt_file_name, Body=text_buffer.getvalue())
         print(f"Uploaded {file} and {txt_file_name} to the S3 bucket.")
     except Exception as e:
         print(f"Error uploading files to S3: {e}")
         return 1
 
-
     # Process tables and figures
     try:
-        figure_count, doc = get_tables(file_count, file)
+        print("File Count: ", file_count)
+        print("File: ", file)
+        
+        print("Username: ", username)
+        figure_count, doc = get_tables(file_count, file, username)
+        if figure_count >= 49:
+            time.sleep(65)
+        print()
         print(f"Processed tables for {file}")
-        extract_images(doc, file_count, figure_count)
+        print("Figure Count: ", figure_count)
+        print("Doc: ", doc)
+        doc = file
+        extract_images(doc, file_count, figure_count, username)
         print(f"Extracted images from {file}")
     except Exception as e:
         print(f"Error processing tables or extracting images: {e}")
@@ -100,9 +115,11 @@ def start_engine(file):
 
     # Update paper_num.csv
     df.loc[file_count] = file_count
+    print(df)
     try:
-        df.to_csv('paper_num.csv', index=False)
-        s3_client.upload_file('paper_num.csv', bucket_name, 'paper_num.csv')
+        csv_buffer = io.StringIO()
+        df.to_csv(csv_buffer, index=False)
+        s3_client.put_object(Bucket=bucket_name, Key=f'{username}/paper_num.csv', Body=csv_buffer.getvalue())
         print(f"Updated paper_num.csv with new entry: {file_count}")
     except Exception as e:
         print(f"Error updating paper_num.csv: {e}")
@@ -110,7 +127,7 @@ def start_engine(file):
 
     print(f"Successfully completed processing {file}")
     return 0
-    
+
 
 # def start_engine(file):
 #     bucket_name = 'hackathon-jr'

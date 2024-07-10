@@ -1,14 +1,17 @@
 # UserChat.py
 
 from langchain.chains import RetrievalQA
-from langchain.document_loaders import PyPDFLoader
+from langchain_community.document_loaders import PyPDFLoader
 from langchain.prompts import PromptTemplate
 from langchain.schema import Document
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain.text_splitter import CharacterTextSplitter
-from langchain.vectorstores import FAISS
+from langchain_community.vectorstores import FAISS
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_community.llms.huggingface_pipeline import HuggingFacePipeline
+from sentence_transformers import SentenceTransformer
+import tempfile
+
 import faiss
 import os
 import pickle
@@ -17,13 +20,37 @@ import json
 import pandas as pd
 from groq import Groq
 from io import StringIO
-import pandas as pd
-from io import StringIO
 import boto3
+from dotenv import load_dotenv
+import re
+
+
+
+class CustomHuggingFaceEmbeddings:
+    def __init__(self, model_name="sentence-transformers/all-MiniLM-L6-v2"):
+        self.model = SentenceTransformer(model_name)
+    
+    def embed(self, texts):
+        return self.model.encode(texts)
+    
+    def embed_documents(self, texts):
+        return self.embed(texts)
+    
+    def __call__(self, text):
+        if isinstance(text, str):
+            return self.embed([text])[0]
+        return self.embed(text)
+
+    
+print("Loading embeddings") # BREAKS HERE
+# Daichi Added - Load the vectorDB and create retreivers
+#embeddings = HuggingFaceEmbeddings(model_name="allenai/scibert_scivocab_uncased")
+#embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
+embeddings = CustomHuggingFaceEmbeddings()
+print("Finished loading embeddings")
+
 ## 2. Functions
 # Functions
-
-
 
 def extract_text(pdf_path):
     """
@@ -111,16 +138,52 @@ def configure_faiss_vector_store(doc_splits, embeddings):
         vector_stores[doc_source] = FAISS.from_documents(chunks, embeddings)
     return vector_stores
 
+### Change
+# def save_faiss_vector_store(vector_db, directory):
+#     print("Directory: ", directory)
+#     if not os.path.exists(directory):
+#         os.makedirs(directory)
+
+#     for doc_source, vector_store in vector_db.items():
+#         index_path = os.path.join(directory, f"{doc_source}.index")
+#         print("Index Path", index_path)
+#         faiss.write_index(vector_store.index, index_path)
+
+#         # Save docstore and index_to_docstore_id
+#         metadata_path = os.path.join(directory, f"{doc_source}.metadata")
+#         print("Metadata Path", metadata_path)
+#         with open(metadata_path, 'wb') as f:
+#             pickle.dump({
+#                 'docstore': vector_store.docstore,
+#                 'index_to_docstore_id': vector_store.index_to_docstore_id
+#             }, f)
+
 def save_faiss_vector_store(vector_db, directory):
     if not os.path.exists(directory):
         os.makedirs(directory)
 
     for doc_source, vector_store in vector_db.items():
-        index_path = os.path.join(directory, f"{doc_source}.index")
+        # Extract just the filename from the full path
+        filename = os.path.basename(doc_source)
+        
+        # Remove the .pdf extension if present
+        filename = os.path.splitext(filename)[0]
+        
+        # Create a safe filename
+        safe_filename = re.sub(r'[^\w\-_\. ]', '_', filename)
+        
+        # Create the index and metadata filenames
+        index_filename = f"{safe_filename}.pdf.index"
+        metadata_filename = f"{safe_filename}.pdf.metadata"
+        
+        # Create the full paths
+        index_path = os.path.join(directory, index_filename)
+        metadata_path = os.path.join(directory, metadata_filename)
+
+        print("Index Path", index_path)
         faiss.write_index(vector_store.index, index_path)
 
-        # Save docstore and index_to_docstore_id
-        metadata_path = os.path.join(directory, f"{doc_source}.metadata")
+        print("Metadata Path", metadata_path)
         with open(metadata_path, 'wb') as f:
             pickle.dump({
                 'docstore': vector_store.docstore,
@@ -130,14 +193,23 @@ def save_faiss_vector_store(vector_db, directory):
 def load_faiss_vector_store(directory, embedding):
     vector_db = {}
 
+    ### Change
+    # for filename in os.listdir(directory):
+    #     if filename.endswith('.index'):
+    #         doc_source = os.path.splitext(filename)[0]
+    #         index_path = os.path.join(directory, filename)
+    #         metadata_path = os.path.join(directory, f"{doc_source}.metadata")
+
     for filename in os.listdir(directory):
-        if filename.endswith('.index'):
-            doc_source = os.path.splitext(filename)[0]
+        if filename.endswith('.pdf.index'):
+            doc_source = filename[:-10]  # Remove '.pdf.index'
             index_path = os.path.join(directory, filename)
-            metadata_path = os.path.join(directory, f"{doc_source}.metadata")
+            metadata_path = os.path.join(directory, f"{doc_source}.pdf.metadata")
 
             # Load FAISS index
             index = faiss.read_index(index_path)
+            #index = FAISS.read_index(index_path)
+
 
             # Load metadata
             with open(metadata_path, 'rb') as f:
@@ -158,31 +230,31 @@ def load_faiss_vector_store(directory, embedding):
 
 s3 = boto3.client('s3')
 
-def update_vector_store(existing_vectordb_path, new_pdf_paths, embedding_model):
-    # Load existing vector store
-    vector_db = load_faiss_vector_store(existing_vectordb_path, embedding_model)
+# def update_vector_store(existing_vectordb_path, new_pdf_paths, embedding_model):
+#     # Load existing vector store
+#     vector_db = load_faiss_vector_store(existing_vectordb_path, embedding_model)
 
-    # grab from s3 buckets and extract the text
-    for pdf_path in new_pdf_paths:
-        s3.download_file('hackathon-jr', pdf_path, pdf_path)
-    new_docs = extract_texts_from_pdfs(new_pdf_paths)
+#     # grab from s3 buckets and extract the text
+#     for pdf_path in new_pdf_paths:
+#         s3.download_file('hackathon-jr', pdf_path, pdf_path)
+#     new_docs = extract_texts_from_pdfs(new_pdf_paths)
 
-    # new_docs = extract_texts_from_pdfs(new_pdf_paths)
+#     # new_docs = extract_texts_from_pdfs(new_pdf_paths)
 
-    # Split the documents into chunks and add metadata
-    new_doc_splits = split_documents_into_chunks(new_docs)
-    new_doc_splits = add_chunk_numbers_to_metadata(new_doc_splits)
+#     # Split the documents into chunks and add metadata
+#     new_doc_splits = split_documents_into_chunks(new_docs)
+#     new_doc_splits = add_chunk_numbers_to_metadata(new_doc_splits)
 
-    # Configure FAISS for new documents
-    new_vector_db = configure_faiss_vector_store(new_doc_splits, embedding_model)
+#     # Configure FAISS for new documents
+#     new_vector_db = configure_faiss_vector_store(new_doc_splits, embedding_model)
 
-    # Update existing vector store with new documents
-    vector_db.update(new_vector_db)
+#     # Update existing vector store with new documents
+#     vector_db.update(new_vector_db)
 
-    # Save the updated vector store
-    save_faiss_vector_store(vector_db, existing_vectordb_path)
+#     # Save the updated vector store
+#     save_faiss_vector_store(vector_db, existing_vectordb_path)
 
-    return vector_db
+#     return vector_db
  
 
 def create_retrievers(vector_stores, search_type="similarity", k=5):
@@ -197,7 +269,6 @@ def create_retrievers(vector_stores, search_type="similarity", k=5):
     Returns:
         dict: Dictionary of retrievers per document.
     """
-    global retrievers
 
     retrievers = {}
     for doc_source, vector_store in vector_stores.items():
@@ -351,6 +422,41 @@ def parse_and_convert_keys(json_string):
         # print(f"An unexpected error occurred: {e}")
         return []
 
+# def extract_descriptions(df, keys):
+#     """
+#     Extract and format descriptions from the dataframe based on the provided keys.
+
+#     Args:
+#     df (DataFrame): The dataframe containing thesis, figure, table, and description data.
+#     keys (list): A list of dictionaries with 'thesis' as int, and 'figure' and 'table' as int or None.
+
+#     Returns:
+#     list: A list of formatted descriptions corresponding to the provided keys.
+#     """
+#     formatted_descriptions = []
+
+#     for key in keys:
+#         thesis_num = key["thesis"]
+#         figure_num = key["figure"]
+#         table_num = key["table"]
+
+#         if figure_num is not None:
+#             description = df[(df["thesis_num"] == thesis_num) & (df["figure_num"] == figure_num)]["description"].values
+#             prefix = f"thesis{thesis_num} figure{figure_num} description: "
+#         elif table_num is not None:
+#             description = df[(df["thesis_num"] == thesis_num) & (df["table_num"] == table_num)]["description"].values
+#             prefix = f"thesis{thesis_num} table{table_num} description: "
+#         else:
+#             description = []
+#             prefix = ""
+
+#         if len(description) > 0:
+#             formatted_descriptions.append(prefix + description[0])
+#         else:
+#             formatted_descriptions.append(prefix + "Description not found")
+
+#     return formatted_descriptions
+
 def extract_descriptions(df, keys):
     """
     Extract and format descriptions from the dataframe based on the provided keys.
@@ -364,23 +470,27 @@ def extract_descriptions(df, keys):
     """
     formatted_descriptions = []
 
+    # Check available columns
+    available_columns = df.columns
+    
     for key in keys:
         thesis_num = key["thesis"]
-        figure_num = key["figure"]
-        table_num = key["table"]
+        figure_num = key.get("figure")
+        table_num = key.get("table")
 
-        if figure_num is not None:
-            description = df[(df["thesis_num"] == thesis_num) & (df["figure_num"] == figure_num)]["description"].values
+        description = df[df["thesis_num"] == thesis_num]
+
+        if "figure_num" in available_columns and figure_num is not None:
+            description = description[description["figure_num"] == figure_num]
             prefix = f"thesis{thesis_num} figure{figure_num} description: "
-        elif table_num is not None:
-            description = df[(df["thesis_num"] == thesis_num) & (df["table_num"] == table_num)]["description"].values
+        elif "table_num" in available_columns and table_num is not None:
+            description = description[description["table_num"] == table_num]
             prefix = f"thesis{thesis_num} table{table_num} description: "
         else:
-            description = []
-            prefix = ""
+            prefix = f"thesis{thesis_num} description: "
 
-        if len(description) > 0:
-            formatted_descriptions.append(prefix + description[0])
+        if not description.empty and "description" in available_columns:
+            formatted_descriptions.append(prefix + description["description"].values[0])
         else:
             formatted_descriptions.append(prefix + "Description not found")
 
@@ -446,9 +556,8 @@ If the information in the "Figure/Table Context" and "Text Context" below seem r
 "Text Context" includes several chunks from different parts of an academic paper. "Figure/Table Context" includes the descriptions related to figures or tables in an academic paper.
 Please refer only to the relevant contexts for your response. There is no need to include unrelated context in your response.
 If the user asks about a specific figure or table and the information is contained in the Figure/Table Context, please ensure that this information is included in your response.
-If you determine that the previous conversation history is relevant, please also refer to that information to answer the user's query.　Especially when the the contexts below are empty, please answer the user's most recent query　based on the conversation history(the user's previous queries and your responses).
-If the conversation is continuing from the previous session and no additional information is needed, you may refer to the previous conversation history and might not need to use the contexts below. (e.g., User's query: Please make your response brief).
-If the contexts and the previous conversation history do not contain the necessary information and it is difficult to answer even with general knowledge and previous context, please respond with 'The information provided is insufficient to answer your question.　Could you please clarify your question?'.
+If you determine that the previous conversation history is relevant, please also refer to that information to answer the user's query, especially when the the contexts below are empty.
+If the contexts and the previous conversation history do not contain the necessary information and it is difficult to answer even with general knowledge and previous context, please respond with 'The information provided is insufficient to answer your question.　Could you please clarify your question with the paper numbers?'.
 
 ##### User’s query #####
 {USER_QUERY}
@@ -592,244 +701,277 @@ Considering the previous conversations, please propose a new research direction 
 ### Output ###
 """
 
-
-## 4. Prepare data
-### 4-1. Creating VectorDB
-### We are assuming we already have 8 PDFs and vector DBs
-
-# ## Creating VectorDB
-# # Load all PDFs
-# pdf_paths = ["attention.pdf"] # Change it to YOUR PATH
-
-# # Extract text from each PDF and create Document objects
-# docs = extract_texts_from_pdfs(pdf_paths)
-
-# ## Chunk
-# # Split the documents into chunks
-# doc_splits = split_documents_into_chunks(docs)
-# # Add chunk number to metadata
-# doc_splits = add_chunk_numbers_to_metadata(doc_splits)
-
-# ## Embedding
-# # SciBERT(Allen Institute for AI) - for academic(science) paper including computer science
-# embeddings = HuggingFaceEmbeddings(model_name="allenai/scibert_scivocab_uncased")
-
-# ## Vector Store
-# # Configure FAISS as Vector Store
-# vector_db = configure_faiss_vector_store(doc_splits, embeddings)
-
-# # Save the vector_db
-# vectordb_path = "vectordb_faiss" # Change it to YOUR PATH
-# save_faiss_vector_store(vector_db, vectordb_path)
-
-def update_vectorbase(pdf_path): 
-  pdf_paths = [pdf_path]  # Change it to your new PDF paths
-  existing_vectordb_path = "vectordb_faiss"  # Change it to your existing VectorDB path
-
-  # Embedding
-  # SciBERT(Allen Institute for AI) - for academic(science) paper including computer science
-  embeddings = HuggingFaceEmbeddings(model_name="allenai/scibert_scivocab_uncased")
-  # Update the vector store with new PDFs
-  vector_db = update_vector_store(existing_vectordb_path, pdf_paths, embeddings)
+# def update_vectorbase(pdf_path): 
+# #   global retrievers
   
-  global retrievers 
+#   pdf_paths = [pdf_path]  # Change it to your new PDF paths
+#existing_vectordb_path = "vectordb_faiss"  # Change it to your existing VectorDB path
+
+#   # Embedding
+#   # SciBERT(Allen Institute for AI) - for academic(science) paper including computer science
+# #   embeddings = HuggingFaceEmbeddings(model_name="allenai/scibert_scivocab_uncased")
+#   # Update the vector store with new PDFs
+#   vector_db = update_vector_store(existing_vectordb_path, pdf_paths, embeddings)
   
-  retrievers = create_retrievers(vector_db)
+# #   retrievers = create_retrievers(vector_db)
 
-  
-
-### 4-2. Creating Image/Table Desctiption Table
-# ADD CODES HERE - Creating Figure/Table Descriptions
-# ADD CODES HERE - Extracting Figure/Table Numbers from Image by using LLM
-# ADD CODES HERE - Creating Final Table
-
-### 4-3. Creating Summary Table
-# ADD CODES HERE
-## 5. Load prepared data
-### 5-1. Load VectorDB
-## Load prepared vectorDB
-# Create retrievers for each document and store them in a dictionary
-### 5-2. Load Image/Table Desctiption Table
-## Load prepared tables
-# Load image/table discription table(sample)
-
-# REPLACE WITH REAL DATASET
-
-#call s3 bucket to get the data
-# table_figure_table = [
-#     {"thesis_num": 1, "figure_num": 1, "table_num": None, "description": "The Transformer model architecture consists of an Encoder and a Decoder. The Encoder includes Input Embedding to convert tokens into dense vectors, Positional Encoding to add position information, Multi-Head Attention to focus on different input parts, Add & Norm for residual connections and normalization, Feed Forward to apply a position-wise feed-forward neural network, and another Add & Norm. The Decoder involves Output Embedding to convert previous output tokens, Positional Encoding, Masked Multi-Head Attention to focus on previous outputs with masking, Add & Norm, Multi-Head Attention to attend to encoder outputs, another Add & Norm, Feed Forward, and another Add & Norm. The final layers include a Linear Layer to transform decoder output and Softmax to produce a probability distribution over output tokens. This architecture uses attention mechanisms to handle long-range dependencies in sequences, making it effective for tasks like machine translation and text summarization."},
-#     {"thesis_num": 1, "figure_num": 2, "table_num": None, "description": "This is description for figure2 in thesis 1"},
-#     {"thesis_num": 1, "figure_num": 3, "table_num": None, "description": "This is description for figure3 in thesis 1"},
-#     {"thesis_num": 1, "figure_num": 4, "table_num": None, "description": "This is description for figure4 in thesis 1"},
-#     {"thesis_num": 2, "figure_num": 1, "table_num": None, "description": "The image illustrates the LLaVA network architecture, which integrates vision and language processing to generate language responses from image and language instructions. The Vision Encoder processes the image to generate visual features. These visual features are then mapped to a new representation using a projection matrix. The Language Model takes the projected visual features and language instructions as inputs to produce a language response. The workflow shows how information flows from the image and language inputs through the network to produce a language response."},
-#     {"thesis_num": 2, "figure_num": 2, "table_num": None, "description": "This is description for figure2 in thesis 2"},
-#     {"thesis_num": 2, "figure_num": 3, "table_num": None, "description": "This is description for figure3 in thesis 2"},
-#     {"thesis_num": 2, "figure_num": None, "table_num": 1, "description": "This is description for table1 in thesis 2"},
-#     {"thesis_num": 2, "figure_num": None, "table_num": 2, "description": "This is description for table2 in thesis 2"},
-#     {"thesis_num": 2, "figure_num": None, "table_num": 3, "description": "This is description for table3 in thesis 2"},
-#     {"thesis_num": 3, "figure_num": 1, "table_num": None, "description": "This is description for figure1 in thesis 3"},
-#     {"thesis_num": 3, "figure_num": 2, "table_num": None, "description": "This is description for figure2 in thesis 3"},
-#     {"thesis_num": 3, "figure_num": None, "table_num": 1, "description": "This is description for table1 in thesis 3"},
-#     {"thesis_num": 3, "figure_num": None, "table_num": 2, "description": "This is description for table2 in thesis 3"},
-#     {"thesis_num": 3, "figure_num": None, "table_num": 3, "description": "This is description for table3 in thesis 3"},
-#     {"thesis_num": 4, "figure_num": 1, "table_num": None, "description": "This is description for figure1 in thesis 4"},
-#     {"thesis_num": 4, "figure_num": 2, "table_num": None, "description": "This is description for figure2 in thesis 4"},
-#     {"thesis_num": 4, "figure_num": 3, "table_num": None, "description": "This is description for figure3 in thesis 4"},
-#     {"thesis_num": 4, "figure_num": None, "table_num": 1, "description": "This is description for table1 in thesis 4"},
-#     {"thesis_num": 4, "figure_num": None, "table_num": 2, "description": "This is description for table2 in thesis 4"},
-#     {"thesis_num": 4, "figure_num": None, "table_num": 3, "description": "This is description for table3 in thesis 4"}
-# ]
-
-# table_figure_table = pd.DataFrame(table_figure_table)
+# #   return retrievers
 
 
-
-# # Initialize the S3 client
-# s3 = boto3.client('s3')
-
-# # Specify the bucket name and object key
-# bucket_name = 'hackathon-jr'
-# object_key = 'image_analysis_results.csv'  # Replace with your actual file name
-
-# # Read the content of the file from S3
-# response = s3.get_object(Bucket=bucket_name, Key=object_key)
-# content = response['Body'].read().decode('utf-8')
-
-# # Create a DataFrame from the content
-# table_figure_table = pd.read_csv(StringIO(content))
-
-# # Now you have your data in the DataFrame called table_figure_table
-# print(table_figure_table.head())
-
-### 5-3. Load Summary Table
-# Load table with thesis_num and description
-
-# REPLACE WITH REAL DATASET
-
-#read in image_analysis_results.csv from s3 bucket and turn it into a dataframe named table summary
+# ADDRESSSSSS
+#ISSUE
 
 
-# Initialize the S3 client
-s3 = boto3.client('s3')
+# new_pdf_names = [".pdf",".pdf"]
+# update_vector_store("vectordb_faiss", new_pdf_paths, embeddings)
+print("Finished updating vectorDB")
 
-# Specify the bucket name and object key
-bucket_name = 'hackathon-jr'
-object_key = 'image_analysis_results.csv'  # Replace with your actual file name
-object_key_table = 'summaries.csv'
+#vector_db = load_faiss_vector_store("vectordb_faiss", embeddings)
 
-# Read the content of the file from S3
-response = s3.get_object(Bucket=bucket_name, Key=object_key)
-content = response['Body'].read().decode('utf-8')
+### Change
+vector_db = load_faiss_vector_store("vectordb_faiss", embeddings)
+print("Finished loading vectorDB")
+retrievers = create_retrievers(vector_db)
+print("Finished creating retrievers")
 
-# Read the content of the file from S3 for object_key_summary
-response_summary = s3.get_object(Bucket=bucket_name, Key=object_key_table)
-content_summary = response_summary['Body'].read().decode('utf-8')
-
-# Create a DataFrame from the content
-table_summary = pd.read_csv(StringIO(content))
-table_figure_table = pd.read_csv(StringIO(content_summary))
-
-# Now you have your data in the DataFrame called table_summary
-print("Finised reading in the data")
-print(table_summary.head())
-print(table_figure_table.head())
-
-# object_key = 'summaries.csv'
-
-# # Read the content of the file from S3
-# response = s3.get_object(Bucket=bucket_name, Key=object_key)
-# content = response['Body'].read().decode('utf-8')
-
-# # Create a DataFrame from the content
-# table_summary = pd.read_csv(StringIO(content))
-
-# # Now you have your data in the DataFrame called table_figure_table
-# print(table_summary.head())
 
 ## 6. Main function
 ## User selection and Mapping
 # User thesis selection before asking questions
 
-
 #pdf_paths_user_selected = ["attention.pdf", "Multimodal.pdf"]
-
 # mapping for image/table description table
 # YOUR CODES HERE
 
 # mapping for summary table
 # YOUR CODES HERE
 # LLM for the main flow
+load_dotenv()
+
 client_main = Groq(
-    api_key="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",
+    api_key=os.getenv('CLIENT_MAIN_API_KEY')
 )
-#  LLM for keys(thesis/figure/table) extaction
+
 client_extract = Groq(
-    api_key="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",
+    api_key=os.getenv('CLIENT_EXTRACT_API_KEY')
 )
-# LLM for HyDE
+
 client_hyde = Groq(
-    api_key="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",
+    api_key=os.getenv('CLIENT_HYDE_API_KEY')
 )
+
+
+def update_vector_store(existing_vectordb_path, new_pdf_names, username):
+
+    new_pdf_names = [pdf_name.name for pdf_name in new_pdf_names]
+
+    print("New PDF Names: ", new_pdf_names)
+
+    embedding_model = embeddings
+    # Load existing vector store
+    vector_db = load_faiss_vector_store(existing_vectordb_path, embedding_model)
+
+    # Extract the base names of existing PDFs in the vector DB
+    existing_keys = vector_db.keys()
+
+    # Filter out the PDF files that are already processed
+    new_files_to_process = [pdf_name for pdf_name in new_pdf_names if pdf_name not in existing_keys]
+
+    # If no new files to process, return
+    if not new_files_to_process:
+        print("No new PDF files to process.")
+        return
+
+    ###### NEED TO CHECK ######
+    # Download new files from S3 and extract the text - check this 
+    
+    for pdf_name in new_files_to_process:
+
+        s3_pdf_path = f"{username}/{pdf_name}"
+        # Create a temporary directory for this process
+        #grab the current directory 
+        temp_dir = os.getcwd()
+        local_pdf_path = os.path.join(temp_dir, pdf_name)
+        
+        # Download PDF from S3
+        try:
+            s3.download_file('hackathon-jr', s3_pdf_path, local_pdf_path)
+            print(f"Downloaded {pdf_name} from S3.")
+        except Exception as e:
+            print(f"Failed to download {pdf_name} from S3: {e}")
+            return 0, None  # Return early if download fails
+
+    # try: 
+    #     s3.download_file('hackathon-jr', pdf_name, pdf_name)
+    #     print("Downloaded PDF from S3")
+    # except Exception as e:
+    #     print(f"An error occurred while downloading the PDF from S3: {e}")
+    #     return
+
+        print([local_pdf_path])
+        new_docs = extract_texts_from_pdfs([local_pdf_path])
+
+        # Split the documents into chunks and add metadata
+        new_doc_splits = split_documents_into_chunks(new_docs)
+
+        print("New Doc Splits: ")
+        print(new_doc_splits)
+        print()
+        new_doc_splits = add_chunk_numbers_to_metadata(new_doc_splits)
+
+        print("New New Doc Splits: ")
+        print(new_doc_splits)
+        print()
+
+        # Configure FAISS for new documents
+        new_vector_db = configure_faiss_vector_store(new_doc_splits, embedding_model)
+
+        print()
+        print("New Vector DB: ")
+        print(new_vector_db)
+
+        # Update existing vector store with new documents
+        vector_db.update(new_vector_db)
+
+        # Save the updated vector store
+        ### Change
+        #save_faiss_vector_store(vector_db, existing_vectordb_path)
+        save_faiss_vector_store(vector_db, "vectordb_faiss")
+
+        global retrievers
+
+        retrievers = create_retrievers(vector_db)
+
+        print("Updated Retrievers: ", retrievers)
+
+    print("Vector store updated successfully.")
 
 # Main
 
-def chat_main(user_query, mapping_df):
+def chat_main(user_query, mapping_df, username):
+    global retrievers
 
-  ## 1. extract keys from user's query and find figure/table description and summary description ##
-  # generate prompt to extract keys from user's query
-  prompt_extract_query = generate_prompt_extract_query(instruction_extract_query, user_query)
-  # get keys from Extraction LLM
-  response_keys = get_groq_response(client_extract, prompt_extract_query)
+    # Initialize the S3 client
+    s3 = boto3.client('s3')
 
-  # parse keys
-  keys = parse_and_convert_keys(response_keys[0])
+    # Specify the bucket name and object keys
+    bucket_name = 'hackathon-jr'
+    user_prefix = f"{username}/"
+    object_key_image = f"{user_prefix}image_analysis_results.csv"
+    object_key_table = f"{user_prefix}summaries.csv"
 
-  # extract figure/table descriptions
-  descriptions_figure_table = extract_descriptions(table_figure_table, keys)
+    try:
+        # Read the content of the image analysis file from S3
+        response = s3.get_object(Bucket=bucket_name, Key=object_key_image)
+        content = response['Body'].read().decode('utf-8')
 
-  # extract thesis numbers from keys
-  keys_thesis = extract_thesis_numbers(keys)
-  # get summary descriptions
-  descriptions_summary = get_descriptions_for_thesis_summary(keys_thesis, table_summary)
+        # Read the content of the summaries file from S3
+        response_summary = s3.get_object(Bucket=bucket_name, Key=object_key_table)
+        content_summary = response_summary['Body'].read().decode('utf-8')
 
-  ## 2. get context for HyDE and general RAG ##
-  # add summary of the thesis as a context for HyDE
-  context_hyde = descriptions_summary
-  # create prompt for HyDE
-  prompt_hyde = generate_prompt_hyde(instruction_hyde, user_query, str(context_hyde))
-  # get a hypothetical answer from HyDE LLM
-  response_hyde = get_groq_response(client_hyde, prompt_hyde)
+        # Create DataFrames from the content
+        table_summary = pd.read_csv(StringIO(content))
+        table_figure_table = pd.read_csv(StringIO(content_summary))
 
-  # # create contexts
-  # initialize empty strings for contexts
-  context_rag_hyde = ""
-  context_rag_general = ""
+        # Now you have your data in the DataFrames called table_summary and table_figure_table
+        print("Finished reading in the data")
+        print(table_summary.head())
+        print(table_figure_table.head())
 
-  # search for documents based on keys_thesis(thesis number extracted from user's query)
-  if keys_thesis and all(key is not None for key in keys_thesis):
-      for key in keys_thesis:
-          if isinstance(key, int):
-              adjusted_key = key - 1  # adjust the key by subtracting 1
-              doc_source = mapping_df["thesis_num"][adjusted_key]  # get the document source(FROM USER'S SELECTED LISTS) based on the adjusted key
-              
+        # Return the response
+        # return response
 
-              retriever = retrievers[doc_source]  # get the corresponding retriever
+    except s3.exceptions.NoSuchKey:
+        print(f"One or more files not found in the user's folder: {user_prefix}")
+        return "Error: Unable to retrieve necessary data. Please ensure all required files have been generated."
 
-              # process query for RAG(Hyde)
-              result_hyde = process_query(response_hyde[0], retriever)
-              context_rag_hyde += f"Document {key}:\n{result_hyde}\n"
+  
+    ## 1. extract keys from user's query and find figure/table description and summary description ##
+    # generate prompt to extract keys from user's query
+    prompt_extract_query = generate_prompt_extract_query(instruction_extract_query, user_query)
+    # get keys from Extraction LLM
+    response_keys = get_groq_response(client_extract, prompt_extract_query)
 
-              # process query for RAG(General)
-              result_general = process_query(user_query, retriever)
-              context_rag_general += f"Document {key}:\n{result_general}\n"
-  else:
-      context_rag_hyde = ""
-      context_rag_general = ""
+    # parse keys
+    keys = parse_and_convert_keys(response_keys[0])
 
-  ## 3. get a final response ##
-  # create prompt for a final response
-  prompt_final = generate_prompt_final(instruction_final, user_query, str(descriptions_figure_table), context_rag_hyde, context_rag_general)
-  # get final response from main LLM
-  response_final = get_groq_response(client_main, prompt_final)
+    # extract figure/table descriptions
+    descriptions_figure_table = extract_descriptions(table_figure_table, keys)
 
-  return response_final
+    # extract thesis numbers from keys
+    keys_thesis = extract_thesis_numbers(keys)
+    # get summary descriptions
+    descriptions_summary = get_descriptions_for_thesis_summary(keys_thesis, table_summary)
+
+    ## 2. get context for HyDE and general RAG ##
+    # add summary of the thesis as a context for HyDE
+    context_hyde = descriptions_summary
+    # create prompt for HyDE
+    prompt_hyde = generate_prompt_hyde(instruction_hyde, user_query, str(context_hyde))
+    # get a hypothetical answer from HyDE LLM
+    response_hyde = get_groq_response(client_hyde, prompt_hyde)
+
+    # # create contexts
+    # initialize empty strings for contexts
+    context_rag_hyde = ""
+    context_rag_general = ""
+
+    print("OVERALL MAP: ", mapping_df)
+
+    # search for documents based on keys_thesis(thesis number extracted from user's query)
+    if keys_thesis and all(key is not None for key in keys_thesis):
+        for key in keys_thesis:
+            if isinstance(key, int):
+                #   adjusted_key = key - 1  # adjust the key by subtracting 1
+                #   doc_source = mapping_df["thesis_num"][adjusted_key]  # get the document source(FROM USER'S SELECTED LISTS) based on the adjusted key
+                doc_source = mapping_df[mapping_df['thesis_num']==key]['PDF Name'].iloc[0]
+                print(doc_source)
+
+                # S3 bucket details
+                bucket_name = 'hackathon-jr'
+                file_name = 'doc_source.txt'
+
+                try:
+                    # Initialize the S3 client
+                    s3 = boto3.client('s3')
+
+                    # Convert the list to a string
+                    content = '\n'.join(map(str, doc_source))
+
+                    # Create a file-like object in memory
+                    file_obj = StringIO(content)
+
+                    # Upload the file to S3
+                    s3.put_object(Bucket=bucket_name, Key=file_name, Body=file_obj.getvalue())
+
+                    print(f"Successfully wrote list to s3://{bucket_name}/{file_name}")
+
+                except Exception as e:
+                    print(f"Error writing to S3: {str(e)}")
+
+                #remove pdf from doc_source
+                doc_source = doc_source.replace(".pdf", "")
+                print("This is Doc Source: " + doc_source) 
+                global retriever
+                
+                print("Chat Main Retrievers: ", retrievers)
+                retriever = retrievers[doc_source]  # get the corresponding retriever
+
+                # process query for RAG(Hyde)
+                result_hyde = process_query(response_hyde[0], retriever)
+                context_rag_hyde += f"Document {key}:\n{result_hyde}\n"
+
+                # process query for RAG(General)
+                result_general = process_query(user_query, retriever)
+                context_rag_general += f"Document {key}:\n{result_general}\n"
+    else:
+        context_rag_hyde = ""
+        context_rag_general = ""
+
+    ## 3. get a final response ##
+    # create prompt for a final response
+    prompt_final = generate_prompt_final(instruction_final, user_query, str(descriptions_figure_table), context_rag_hyde, context_rag_general)
+    # get final response from main LLM
+    response_final = get_groq_response(client_main, prompt_final)
+
+    return response_final
