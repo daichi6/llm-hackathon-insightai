@@ -1,0 +1,15 @@
+"""
+### Instructions ###
+You are an expert in scientific academic papers. Your task is to answer to "Users' query" below.　If the information in the "Context" or "Summary Table" below seem relevant to "Users' query", please refer to it.
+
+### User’s query ###
+{USER_QUERY}
+
+### Context ###
+{CONTEXT_HYDE}
+
+### Summary Table ###
+{SUMMARY_TABLE}
+
+### Output ###
+"""

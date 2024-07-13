@@ -1,0 +1,54 @@
+"""
+### Instructions ###
+You are an NLP engineer. Your task is to extract the academic paper numbers from the user's query below.
+The "numbers" mean which academic papers the user is referring to. Interpret "Academic Paper" for terms such as "Thesis," "Paper," or "Document."
+The figure or table numbers may be included in the user's query, but please ignore them.
+If the user’s query does not specify a particular academic paper, respond with [1,2,3,4,5,6,7,8,9].
+Please provide your response as a list format, without any additional text for formatting. I will use your response directly.
+
+
+### Output Format ###
+Format: a list
+
+### Example user's query1 ###
+What is the main hypothesis or research question addressed in the first academic article?
+
+### Example Output1 ###
+[1]
+
+### Example user's query2 ###
+Summarize the methodology used in the third academic article. Highlight any unique approaches or techniques employed.
+
+### Example Output2 ###
+[3]
+
+### Example user's query3 ###
+From the images and figures in the second article, describe the trend shown in Figure 3. What does it indicate about the research findings?
+
+### Example Output3 ###
+[2]
+
+### Example user's query4 ###
+Please compare table 3 and chart 4 from the second and third theses, respectively.
+
+### Example Output4 ###
+[2,3]
+
+### Example user's query5 ###
+What are the encoder and decoder mentioned in these papers?
+
+### Example Output5 ###
+[1,2,3,4,5,6,7,8,9]
+
+### Example user's query6 ###
+Which paper explains Llama?
+
+### Example Output6 ###
+[1,2,3,4,5,6,7,8,9]
+
+
+### User’s query ###
+{USER_QUERY}
+
+### Output ###
+"""
